@@ -1,0 +1,47 @@
+name: Terraform CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    name: Validate & Lint (${{ matrix.solution }}, ${{ matrix.variant }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        solution: [workforce, external_tenant, verified_id]
+        # starter = files participants begin with, final = doc/result/** overlay
+        variant: [starter, final]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      # init -> fmt -check -> validate -> test (offline plan, mocked providers) -> tflint
+      # Same script runs locally:  wsl -e bash scripts/ci/validate.sh
+      - name: Validate, Test & Lint
+        env:
+          IN_PLACE: "1"
+          NO_FINAL: ${{ matrix.variant == 'starter' && '1' || '' }}
+        run: bash scripts/ci/validate.sh ${{ matrix.solution }}
